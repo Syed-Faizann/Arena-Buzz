@@ -5,8 +5,25 @@ import { generateUniqueInviteCode } from "../lib/inviteCode.js";
 import { checkSubscriptionStatus } from "../lib/subscription.js";
 
 /**
+ * Helper to check if a contest deadline has passed
+ */
+function isContestExpired(activeTill) {
+  if (!activeTill) return false;
+  const dateStr = typeof activeTill === "string" ? activeTill : activeTill.date;
+  if (!dateStr) return false;
+  try {
+    const timeStr = (typeof activeTill === "object" && activeTill.time) || "23:59:59";
+    const target = new Date(`${dateStr}T${timeStr}`);
+    if (isNaN(target.getTime())) return false;
+    return target - new Date() <= 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * @route   GET /api/org/public/:inviteCode
- * @desc    Public endpoint to view an organization and its ongoing contests
+ * @desc    Public endpoint to view an organization and its ongoing & expired contests
  * @access  Public
  */
 export const getOrganizationByInviteCode = async (req, res) => {
@@ -26,11 +43,22 @@ export const getOrganizationByInviteCode = async (req, res) => {
       return res.status(404).json({ message: "Organization not found for this invite code" });
     }
 
-    // Retrieve ongoing contests created by this host organization
-    const ongoingContests = await Contest.find({
+    // Retrieve all contests created by this host organization
+    const allContests = await Contest.find({
       host: host._id,
-      status: "ongoing",
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).lean();
+
+    const enrichedContests = allContests.map((c) => {
+      const expired = c.status === "archived" || isContestExpired(c.activeTill);
+      return {
+        ...c,
+        isExpired: Boolean(expired),
+        displayStatus: expired ? "expired" : "ongoing",
+      };
+    });
+
+    const ongoingContests = enrichedContests.filter((c) => !c.isExpired);
+    const expiredContests = enrichedContests.filter((c) => c.isExpired);
 
     // Count enrolled contestants
     const totalMembers = await User.countDocuments({
@@ -58,9 +86,16 @@ export const getOrganizationByInviteCode = async (req, res) => {
         createdAt: host.createdAt,
         totalMembers,
         isMember,
+        ongoingCount: ongoingContests.length,
+        expiredCount: expiredContests.length,
+        totalContests: enrichedContests.length,
       },
+      contests: enrichedContests,
       ongoingContests,
-      count: ongoingContests.length,
+      expiredContests,
+      count: enrichedContests.length,
+      ongoingCount: ongoingContests.length,
+      expiredCount: expiredContests.length,
     });
   } catch (error) {
     console.error("getOrganizationByInviteCode error:", error);
@@ -235,8 +270,8 @@ export const getHostDashboard = async (req, res) => {
     const contests = await Contest.find({ host: hostId }).sort({ createdAt: -1 });
 
     const totalContests = contests.length;
-    const ongoingContests = contests.filter((c) => c.status === "ongoing").length;
-    const archivedContests = contests.filter((c) => c.status === "archived").length;
+    const ongoingContests = contests.filter((c) => c.status === "ongoing" && !isContestExpired(c.activeTill)).length;
+    const archivedContests = contests.filter((c) => c.status === "archived" || isContestExpired(c.activeTill)).length;
 
     let totalSubmissions = 0;
     for (const c of contests) {

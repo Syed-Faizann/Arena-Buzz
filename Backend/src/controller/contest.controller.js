@@ -430,12 +430,24 @@ export const submitQuestionAnswer = async (req, res) => {
       });
     }
 
+    const userId = req.session?.userId || null;
+
+    // Check if user already submitted this contest
+    if (userId && contest.submissions && contest.submissions.length > 0) {
+      const alreadySubmitted = contest.submissions.some(
+        (s) => s.userId && s.userId.toString() === userId.toString()
+      );
+      if (alreadySubmitted) {
+        return res.status(400).json({
+          message: "You have already completed this contest. Retakes are not allowed.",
+        });
+      }
+    }
+
     const question = contest.questions.id(questionId);
     if (!question) {
       return res.status(404).json({ message: "Question not found" });
     }
-
-    const userId = req.session?.userId || null;
 
     // Membership check: contestants can only answer questions from institutes they joined
     if (userId) {
@@ -565,10 +577,17 @@ export const submitWholeContest = async (req, res) => {
       contest.submissions = [];
     }
 
-    // Save or update contestant's score
+    // Save contestant's score - disallow retakes
     const existingIndex = userId
       ? contest.submissions.findIndex((s) => s.userId && s.userId.toString() === userId.toString())
       : -1;
+
+    if (existingIndex !== -1) {
+      return res.status(400).json({
+        message: "You have already completed this contest. Retakes are not allowed.",
+        submission: contest.submissions[existingIndex],
+      });
+    }
 
     const submissionData = {
       userId,
@@ -580,14 +599,7 @@ export const submitWholeContest = async (req, res) => {
       submittedAt: new Date(),
     };
 
-    if (existingIndex !== -1) {
-      contest.submissions[existingIndex] = {
-        ...contest.submissions[existingIndex].toObject(),
-        ...submissionData,
-      };
-    } else {
-      contest.submissions.push(submissionData);
-    }
+    contest.submissions.push(submissionData);
 
     await contest.save();
 

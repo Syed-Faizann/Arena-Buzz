@@ -45,8 +45,8 @@ export default function DeadlinePicker({ value, onChange }) {
   };
 
   return (
-    <div className="mt-2">
-      <div className="grid md:grid-cols-2 gap-4">
+    <div className="mt-1.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Date Input */}
         <div
           onClick={openDatePicker}
@@ -64,7 +64,7 @@ export default function DeadlinePicker({ value, onChange }) {
               border-gray-300
               text-[#222222]
               rounded-full
-              px-4 py-2 pr-10
+              px-4 py-2.5 pr-10
               text-sm
               focus:outline-none
               focus:ring-2
@@ -102,7 +102,7 @@ export default function DeadlinePicker({ value, onChange }) {
               border-gray-300
               text-[#222222]
               rounded-full
-              px-4 py-2 pr-10
+              px-4 py-2.5 pr-10
               text-sm
               focus:outline-none
               focus:ring-2

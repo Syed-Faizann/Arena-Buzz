@@ -216,7 +216,7 @@ const Page = () => {
   }
 
   return (
-    <div className="p-4 sm:p-6 w-full max-w-3xl">
+    <div className="p-4 sm:p-6 w-full max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-black">
           Create Contest
@@ -336,11 +336,12 @@ const Page = () => {
         className="hidden"
       />
 
-      <div className="flex flex-col md:flex-row gap-6 md:gap-10">
+      {/* Contest Primary Info: Image on Left + Name & Deadline on Right */}
+      <div className="flex flex-col sm:flex-row gap-5 md:gap-6 items-stretch mb-6">
         {/* Contest Image Upload Box */}
         <div
           onClick={() => fileInputRef.current?.click()}
-          className="relative flex flex-col w-full sm:w-1/3 bg-[#EFF0F3] h-44 items-center justify-center rounded-2xl cursor-pointer mx-auto sm:mx-0 overflow-hidden border-2 border-dashed border-gray-300 hover:border-[#12BAB0] transition-colors group"
+          className="relative flex flex-col w-full sm:w-48 md:w-56 bg-[#EFF0F3] min-h-[160px] items-center justify-center rounded-2xl cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 hover:border-[#12BAB0] transition-colors group shrink-0"
         >
           {contestImage ? (
             <>
@@ -362,16 +363,17 @@ const Page = () => {
           ) : (
             <>
               <Upload className="w-6 h-6 text-[#050D27] mb-2 group-hover:text-[#12BAB0] transition-colors" />
-              <p className="text-[#050D27] text-sm underline group-hover:text-[#12BAB0] transition-colors">
+              <p className="text-[#050D27] text-sm font-medium underline group-hover:text-[#12BAB0] transition-colors">
                 Upload your image
               </p>
             </>
           )}
         </div>
 
-        <div className="flex flex-col text-[#050D27] w-full max-w-xl md:mx-0">
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">
+        {/* Contest Name and Deadline */}
+        <div className="flex-1 flex flex-col justify-between gap-4 text-[#050D27]">
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-1.5">
               Name of the contest
             </label>
             <input
@@ -379,74 +381,12 @@ const Page = () => {
               value={contestName}
               onChange={(e) => setContestName(e.target.value)}
               placeholder="e.g. Ongoing Contest"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#12BAB0] focus:border-transparent text-sm"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#12BAB0] focus:border-transparent text-sm bg-white"
             />
           </div>
 
-          {/* Host Institute Affiliation */}
-          <div className="mb-4 p-4 bg-teal-50/60 border border-teal-200/80 rounded-2xl space-y-3">
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-[#12BAB0]" />
-              <span className="text-xs font-bold text-[#010B28] uppercase tracking-wider">
-                Institute Affiliation
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Organization / College / School Name
-              </label>
-              <input
-                type="text"
-                value={organizationName}
-                onChange={(e) => setOrganizationName(e.target.value)}
-                placeholder="e.g. Stanford University, Lincoln High School, Apex Coaching"
-                className="w-full px-3.5 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#12BAB0] text-xs bg-white text-gray-900"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Institute Category
-                </label>
-                <select
-                  value={organizationType}
-                  onChange={(e) => setOrganizationType(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#12BAB0] text-xs bg-white text-gray-900 font-medium"
-                >
-                  <option value="school">School</option>
-                  <option value="college">College</option>
-                  <option value="university">University</option>
-                  <option value="institute">Coaching / Training Institute / Academy</option>
-                  <option value="company">Corporate / Company</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              {organizationType === "other" && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Specify Custom Category
-                  </label>
-                  <input
-                    type="text"
-                    value={customOrgType}
-                    onChange={(e) => setCustomOrgType(e.target.value)}
-                    placeholder="e.g. Sports Club, NGO, Community"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#12BAB0] text-xs bg-white text-gray-900"
-                  />
-                </div>
-              )}
-            </div>
-
-            <p className="text-[11px] text-gray-500">
-              Students and contestants can filter and view ongoing contests under your institute banner.
-            </p>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-[#4E4E4E] text-sm font-bold mb-1">
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-1">
               Contest Active till
             </label>
             <DeadlinePicker
@@ -455,6 +395,68 @@ const Page = () => {
             />
           </div>
         </div>
+      </div>
+
+      {/* Host Institute Affiliation - Full Width Card */}
+      <div className="mb-6 p-4 sm:p-5 bg-teal-50/60 border border-teal-200/80 rounded-2xl space-y-3">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-[#12BAB0]" />
+          <span className="text-xs font-bold text-[#010B28] uppercase tracking-wider">
+            Institute Affiliation
+          </span>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1">
+            Organization / College / School Name
+          </label>
+          <input
+            type="text"
+            value={organizationName}
+            onChange={(e) => setOrganizationName(e.target.value)}
+            placeholder="e.g. Stanford University, Lincoln High School, Apex Coaching"
+            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#12BAB0] text-sm bg-white text-gray-900"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">
+              Institute Category
+            </label>
+            <select
+              value={organizationType}
+              onChange={(e) => setOrganizationType(e.target.value)}
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#12BAB0] text-sm bg-white text-gray-900 font-medium"
+            >
+              <option value="school">School</option>
+              <option value="college">College</option>
+              <option value="university">University</option>
+              <option value="institute">Coaching / Training Institute / Academy</option>
+              <option value="company">Corporate / Company</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {organizationType === "other" && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Specify Custom Category
+              </label>
+              <input
+                type="text"
+                value={customOrgType}
+                onChange={(e) => setCustomOrgType(e.target.value)}
+                placeholder="e.g. Sports Club, NGO, Community"
+                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#12BAB0] text-sm bg-white text-gray-900"
+              />
+            </div>
+          )}
+        </div>
+
+        <p className="text-[11px] text-gray-500">
+          Students and contestants can filter and view ongoing contests under your institute banner.
+        </p>
       </div>
 
       <div className="border-t border-gray-200 my-8"></div>

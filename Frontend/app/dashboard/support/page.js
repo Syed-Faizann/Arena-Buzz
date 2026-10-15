@@ -239,7 +239,7 @@ export default function SupportPage() {
   };
 
   return (
-    <div className="space-y-6 pb-12 max-w-5xl mx-auto">
+    <div className="space-y-6 pb-12 w-full">
       {/* Hero Header */}
       <div className="bg-gradient-to-br from-[#010B28] via-[#08183A] to-[#0A2540] rounded-3xl p-6 md:p-8 text-white border border-white/10 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-[#12BAB0]/15 rounded-full blur-3xl pointer-events-none" />

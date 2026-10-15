@@ -68,6 +68,7 @@ export default function ContestPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionResults, setSubmissionResults] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
 
   // Fetch contest details & prior submission (if any)
   async function loadContestData() {
@@ -114,6 +115,35 @@ export default function ContestPage() {
           totalContestants: resultsData.contest?.totalContestants || 1,
           breakdown: resultsData.userSubmission.breakdown,
         });
+      } else if (contestData && contestData.contest) {
+        const curUserId = user?._id || user?.id;
+        const existingSub = (contestData.contest.submissions || []).find(
+          (s) => (s.userId?._id || s.userId)?.toString() === curUserId?.toString()
+        );
+        if (existingSub) {
+          const breakdown = (contestData.contest.questions || []).map((q, idx) => {
+            const qIdStr = q._id?.toString() || String(idx);
+            const chosen = (existingSub.answers && existingSub.answers[qIdStr]) || "";
+            const expected = q.correctAnswer || (q.options && q.options[0]) || "";
+            return {
+              questionId: qIdStr,
+              question: q.question,
+              options: q.options,
+              chosenOption: chosen,
+              correctAnswer: expected,
+              isCorrect: Boolean(chosen && chosen.trim() === expected.trim()),
+              source: q.source || "",
+            };
+          });
+          setSubmissionResults({
+            score: existingSub.score,
+            totalQuestions: existingSub.totalQuestions || contestData.contest.questions.length,
+            percentage: existingSub.percentage,
+            averageScore: existingSub.percentage,
+            totalContestants: (contestData.contest.submissions || []).length || 1,
+            breakdown,
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to load contest:", err);
@@ -171,6 +201,19 @@ export default function ContestPage() {
   const currentQIdStr = currentQuestion?._id?.toString() || String(currentQuestionIndex);
   const qDuration = currentQuestion?.timer ? Number(currentQuestion.timer) : 30;
 
+  const hasSubmittedRef = useRef(false);
+  const answersRef = useRef({ submittedAnswers, userAnswers, currentQIdStr, questions });
+
+  useEffect(() => {
+    answersRef.current = { submittedAnswers, userAnswers, currentQIdStr, questions };
+  }, [submittedAnswers, userAnswers, currentQIdStr, questions]);
+
+  useEffect(() => {
+    if (submissionResults) {
+      hasSubmittedRef.current = true;
+    }
+  }, [submissionResults]);
+
   const handleSubmitContest = async (finalAnswers) => {
     if (isExpired) {
       alert("This contest has expired and can no longer be submitted or re-attempted.");
@@ -179,6 +222,8 @@ export default function ContestPage() {
 
     if (timerRef.current) clearInterval(timerRef.current);
     setShowConfirmModal(false);
+    setShowLeaveModal(false);
+    hasSubmittedRef.current = true;
 
     const answersToSubmit = finalAnswers || submittedAnswers;
 
@@ -205,6 +250,9 @@ export default function ContestPage() {
           );
           setIsSubmitting(false);
           return;
+        }
+        if (submitErr.status === 400 && submitErr.data?.submission) {
+          res = submitErr.data.submission;
         }
         console.warn("Backend submitWholeContest encountered an issue, compiling local results:", submitErr);
       }
@@ -256,6 +304,103 @@ export default function ContestPage() {
       setIsSubmitting(false);
     }
   };
+
+  const handleConfirmLeaveAndSubmit = async () => {
+    setShowLeaveModal(false);
+    hasSubmittedRef.current = true;
+
+    const userChoice = userAnswers[currentQIdStr];
+    const selectedOption =
+      userChoice && typeof userChoice === "object" ? userChoice.option : userChoice || "";
+
+    const updated = {
+      ...submittedAnswers,
+    };
+    if (selectedOption) {
+      updated[currentQIdStr] = selectedOption;
+    }
+
+    await handleSubmitContest(updated);
+  };
+
+  // Intercept leaving the page (beforeunload, pagehide, and browser back)
+  useEffect(() => {
+    const isTestActive = !submissionResults && !isExpired && contest && questions.length > 0;
+    if (!isTestActive) return;
+
+    window.history.pushState({ testActive: true }, "");
+
+    const handleBeforeUnload = (e) => {
+      if (hasSubmittedRef.current) return;
+      e.preventDefault();
+      e.returnValue =
+        "Warning: If you leave now, your quiz will be submitted immediately. Answered questions will be graded and pending questions will be marked 0. You cannot retake this test.";
+      return e.returnValue;
+    };
+
+    const handlePageHide = () => {
+      if (hasSubmittedRef.current) return;
+      hasSubmittedRef.current = true;
+
+      const {
+        submittedAnswers: subAns,
+        userAnswers: uAns,
+        currentQIdStr: qIdStr,
+        questions: qs,
+      } = answersRef.current;
+
+      const currentChoice = uAns[qIdStr];
+      const currentSelected =
+        currentChoice && typeof currentChoice === "object"
+          ? currentChoice.option
+          : currentChoice || "";
+
+      const finalAnswers = { ...subAns };
+      if (currentSelected) {
+        finalAnswers[qIdStr] = currentSelected;
+      }
+
+      const cleanAnswers = {};
+      qs.forEach((q, idx) => {
+        const qId = q._id?.toString() || String(idx);
+        cleanAnswers[qId] = finalAnswers[qId] || "";
+      });
+
+      const curId = user?._id || user?.id || "guest";
+      try {
+        localStorage.setItem(`fantasy_submitted_contest_${id}_${curId}`, "true");
+      } catch (e) {}
+
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      try {
+        fetch(`${API_URL}/api/contests/${id}/submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          keepalive: true,
+          body: JSON.stringify({ userAnswers: cleanAnswers }),
+        });
+      } catch (err) {
+        console.error("Auto submit on leave error:", err);
+      }
+    };
+
+    const handlePopState = () => {
+      if (hasSubmittedRef.current) return;
+      window.history.pushState({ testActive: true }, "");
+      setShowLeaveModal(true);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [contest?._id, submissionResults !== null, isExpired, questions.length, user?._id]);
 
   // Single, reliable countdown and auto-advance effect per question
   useEffect(() => {
@@ -337,10 +482,11 @@ export default function ContestPage() {
     }));
   };
 
-  const answeredCount = Object.keys(submittedAnswers).filter((k) => {
-    const val = submittedAnswers[k];
-    return Boolean(val && typeof val === "string" && val.trim() !== "");
-  }).length;
+  const answeredCount =
+    Object.keys(submittedAnswers).filter((k) => {
+      const val = submittedAnswers[k];
+      return Boolean(val && typeof val === "string" && val.trim() !== "");
+    }).length + (userAnswers[currentQIdStr] && !submittedAnswers[currentQIdStr] ? 1 : 0);
 
   const progressPercent =
     totalQuestions > 0
@@ -425,24 +571,33 @@ export default function ContestPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto pb-20">
+    <div className="w-full pb-20">
       {/* Top Navigation */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-black transition-colors"
+          onClick={(e) => {
+            const isTestActive = !submissionResults && !isExpired && contest && questions.length > 0;
+            if (isTestActive) {
+              e.preventDefault();
+              setShowLeaveModal(true);
+            }
+          }}
+          className="inline-flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-black transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Contests
         </Link>
-        <span className="text-xs font-bold uppercase tracking-wider text-[#12BAB0] bg-[#12BAB0]/10 px-3 py-1 rounded-full">
-          {contest.status || "Ongoing"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-wider text-[#12BAB0] bg-[#12BAB0]/10 border border-[#12BAB0]/20 px-3.5 py-1 rounded-full">
+            {contest.status || "Ongoing"}
+          </span>
+        </div>
       </div>
 
       {/* Contest Banner Card */}
-      <div className="bg-[#010B28] rounded-3xl text-white p-6 md:p-8 mb-8 shadow-xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#010B28] via-[#05173E] to-[#0A2357] rounded-3xl text-white p-6 md:p-8 mb-6 shadow-xl relative overflow-hidden border border-white/10">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="max-w-xl">
+          <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-[#12BAB0] bg-white/10 px-3 py-0.5 rounded-full backdrop-blur-md">
                 Official Contest
@@ -462,10 +617,10 @@ export default function ContestPage() {
                 {formatTimeRemaining(contest.activeTill)}
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight truncate">
               {contest.name}
             </h1>
-            <p className="text-sm text-gray-300 mt-2">
+            <p className="text-sm text-gray-300 mt-2 max-w-3xl leading-relaxed">
               Answer all questions and submit the test to see your score, compare with the contest average, and view correct answers.
             </p>
           </div>
@@ -567,24 +722,10 @@ export default function ContestPage() {
                   Back to Dashboard
                 </button>
               </Link>
-              {isExpired ? (
-                <div className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-gray-100 text-gray-600 rounded-full text-xs sm:text-sm font-bold border border-gray-200 shadow-2xs">
-                  <Clock className="w-4 h-4 text-gray-500" />
-                  Contest Expired • Re-attempts Closed
-                </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    setSubmissionResults(null);
-                    setCurrentQuestionIndex(0);
-                    setUserAnswers({});
-                    setTimeUpAlert(false);
-                  }}
-                  className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-full font-bold text-sm transition-colors cursor-pointer flex items-center gap-2"
-                >
-                  <RotateCcw className="w-4 h-4" /> Retake Test
-                </button>
-              )}
+              <div className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-emerald-50 text-emerald-800 rounded-full text-xs sm:text-sm font-bold border border-emerald-200 shadow-2xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Test Completed • Retakes Not Allowed
+              </div>
             </div>
           </div>
 
@@ -625,7 +766,7 @@ export default function ContestPage() {
                       ) : !item.chosenOption ? (
                         <>
                           <Clock className="w-3.5 h-3.5 text-amber-600" />
-                          ⏱ Timed Out (0 pts)
+                          ⏱ Pending / Unanswered (0 pts)
                         </>
                       ) : (
                         <>
@@ -681,7 +822,7 @@ export default function ContestPage() {
                   {!item.chosenOption && (
                     <div className="mt-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-semibold flex items-center gap-2">
                       <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                      <span>This question was not submitted before time expired (0 points awarded).</span>
+                      <span>This question was pending or left unanswered when test was submitted (0 points awarded).</span>
                     </div>
                   )}
 
@@ -729,14 +870,18 @@ export default function ContestPage() {
         /* ========================================================= */
         <div className="space-y-6">
           {/* Top Progress & Live Question Countdown Bar */}
-          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-gray-200 shadow-sm sticky top-4 z-30 flex items-center justify-between gap-4 backdrop-blur-md">
-            <div className="flex-1">
+          <div className="bg-white/95 p-4 sm:p-5 rounded-2xl border border-gray-200/80 shadow-md sticky top-4 z-30 flex items-center justify-between gap-4 sm:gap-6 backdrop-blur-md">
+            <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5 text-[#12BAB0]" />
                   Contest Progress
                 </span>
-                <span className="text-xs font-black text-[#010B28]">
-                  Question {currentQuestionIndex + 1} of {totalQuestions}
+                <span className="text-xs font-black text-[#010B28] flex items-center gap-2">
+                  <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-teal-50 text-[#12BAB0] border border-teal-200 hidden sm:inline-block">
+                    {totalQuestions > 0 ? Math.round(((currentQuestionIndex + 1) / totalQuestions) * 100) : 0}% Completed
+                  </span>
                 </span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
@@ -751,7 +896,7 @@ export default function ContestPage() {
 
             {/* Live Question Countdown Badge */}
             <div
-              className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 font-black text-sm sm:text-base flex-shrink-0 transition-all shadow-xs ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-2xl border-2 font-black text-sm sm:text-base flex-shrink-0 transition-all shadow-xs ${
                 timeLeft <= 5
                   ? "border-red-400 bg-red-50 text-red-600 animate-pulse"
                   : timeLeft <= 10
@@ -760,7 +905,7 @@ export default function ContestPage() {
               }`}
             >
               <Clock className={`w-4 h-4 ${timeLeft <= 5 ? "animate-spin text-red-600" : ""}`} />
-              <span>{timeLeft}s</span>
+              <span>{timeLeft}s left</span>
             </div>
           </div>
 
@@ -778,11 +923,11 @@ export default function ContestPage() {
 
           {/* Current Question Display Card */}
           {currentQuestion ? (
-            <div className="bg-[#EFF0F3] border border-gray-300/80 rounded-3xl p-6 sm:p-8 shadow-sm transition-all relative overflow-hidden">
-              {/* Question Countdown Duration Bar */}
-              <div className="w-full bg-gray-200/90 rounded-full h-2 overflow-hidden mb-6">
+            <div className="bg-white border border-gray-200 rounded-3xl p-6 sm:p-10 shadow-md transition-all relative overflow-hidden">
+              {/* Sleek countdown progress line at the top border */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gray-100 overflow-hidden">
                 <div
-                  className={`h-full transition-all duration-1000 ease-linear rounded-full ${
+                  className={`h-full transition-all duration-1000 ease-linear ${
                     timeLeft <= 5
                       ? "bg-red-500"
                       : timeLeft <= 10
@@ -795,21 +940,24 @@ export default function ContestPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs sm:text-sm font-extrabold text-[#12BAB0] bg-white border border-[#12BAB0]/30 px-3.5 py-1 rounded-full shadow-2xs">
-                  Question {currentQuestionIndex + 1} of {totalQuestions}
+              {/* Question Metadata Header */}
+              <div className="flex items-center justify-between mb-4 pt-1">
+                <span className="text-xs sm:text-sm font-black text-[#12BAB0] bg-teal-50 border border-teal-200/80 px-4 py-1 rounded-full shadow-2xs">
+                  Question {currentQuestionIndex + 1}
                 </span>
-                <span className="text-xs font-semibold text-gray-500 bg-white border border-gray-200 px-3 py-1 rounded-full flex items-center gap-1">
-                  ⏱ {qDuration}s Timer
+                <span className="text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1 rounded-full flex items-center gap-1.5">
+                  <span>Single Choice</span>
+                  <span>•</span>
+                  <span>⏱ {qDuration}s Timer</span>
                 </span>
               </div>
 
-              <h3 className="text-xl sm:text-2xl font-black text-[#282828] mb-6 leading-snug">
+              <h3 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#010B28] mb-6 leading-snug tracking-tight">
                 {currentQuestion.question}
               </h3>
 
               {/* Options List */}
-              <div className="space-y-3 mb-6">
+              <div className="space-y-3.5 mb-6">
                 {(currentQuestion.options || []).map((opt, optIdx) => {
                   const userChoice = userAnswers[currentQIdStr];
                   const selectedVal = userChoice
@@ -830,31 +978,31 @@ export default function ContestPage() {
                     <div
                       key={optIdx}
                       onClick={() => handleSelectOption(currentQIdStr, opt, optIdx)}
-                      className={`flex items-center gap-3.5 p-4 px-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                      className={`flex items-center gap-4 p-4.5 px-6 rounded-2xl border-2 transition-all cursor-pointer ${
                         isChecked
-                          ? "bg-white border-[#12BAB0] text-black font-bold shadow-md ring-2 ring-[#12BAB0]/20 scale-[1.005]"
-                          : "bg-white/80 border-gray-200 hover:border-gray-300 hover:bg-white text-gray-700"
+                          ? "bg-[#12BAB0]/5 border-[#12BAB0] text-[#010B28] font-bold shadow-sm ring-2 ring-[#12BAB0]/20 scale-[1.003]"
+                          : "bg-gray-50/70 hover:bg-white border-gray-200 hover:border-gray-300 text-gray-800"
                       }`}
                     >
                       <span
-                        className={`w-7 h-7 rounded-full text-xs font-black flex items-center justify-center flex-shrink-0 transition-colors ${
+                        className={`w-8 h-8 rounded-full text-xs font-black flex items-center justify-center shrink-0 transition-colors ${
                           isChecked
-                            ? "bg-[#12BAB0] text-white"
-                            : "bg-gray-100 text-gray-600 border border-gray-300"
+                            ? "bg-[#12BAB0] text-white shadow-xs"
+                            : "bg-white text-gray-600 border border-gray-300"
                         }`}
                       >
                         {OPTION_LETTERS[optIdx] || optIdx + 1}
                       </span>
-                      <span className="text-sm sm:text-base flex-1">{opt}</span>
+                      <span className="text-base sm:text-lg flex-1 font-medium">{opt}</span>
                       <div
-                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
                           isChecked
                             ? "border-[#12BAB0] bg-[#12BAB0]"
                             : "border-gray-300 bg-white"
                         }`}
                       >
                         {isChecked && (
-                          <Check className="w-3 h-3 text-white stroke-[3]" />
+                          <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
                         )}
                       </div>
                     </div>
@@ -880,15 +1028,15 @@ export default function ContestPage() {
               )}
 
               {/* Bottom Submit / Next Action Bar */}
-              <div className="mt-8 pt-6 border-t border-gray-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-xs text-gray-500 font-medium">
+              <div className="mt-8 pt-6 border-t border-gray-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                <div className="text-xs sm:text-sm text-gray-500 font-medium flex-1 min-w-0">
                   {userAnswers[currentQIdStr] ? (
                     <span className="text-emerald-700 font-bold flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Option selected! Click submit to lock in answer before timer expires.
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> Option selected! Click submit to lock in answer before timer expires.
                     </span>
                   ) : (
                     <span className="text-gray-500 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-gray-400" /> Select & submit before timer runs out ({timeLeft}s left). Unsubmitted questions receive 0 pts.
+                      <Clock className="w-3.5 h-3.5 text-gray-400 shrink-0" /> Select an answer before timer runs out ({timeLeft}s left). Unsubmitted questions receive 0 pts.
                     </span>
                   )}
                 </div>
@@ -897,26 +1045,28 @@ export default function ContestPage() {
                   type="button"
                   onClick={handleNextOrSubmit}
                   disabled={isSubmitting || timeUpAlert}
-                  className={`w-full sm:w-auto px-8 py-3 rounded-full font-extrabold text-sm sm:text-base transition-all duration-200 cursor-pointer shadow-md flex items-center justify-center gap-2 ${
+                  className={`w-full sm:w-auto px-7 sm:px-9 py-3.5 rounded-full font-black text-sm sm:text-base transition-all duration-200 cursor-pointer shadow-md inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 ${
                     currentQuestionIndex >= totalQuestions - 1
-                      ? "bg-[#12BAB0] hover:bg-[#0fa89f] text-white hover:shadow-lg"
-                      : "bg-[#010B28] hover:bg-[#12BAB0] text-white hover:shadow-lg"
+                      ? "bg-[#12BAB0] hover:bg-[#0fa89f] text-white hover:shadow-lg hover:scale-105 active:scale-95"
+                      : "bg-[#010B28] hover:bg-[#12BAB0] text-white hover:shadow-lg hover:scale-105 active:scale-95"
                   } disabled:opacity-50`}
                 >
                   {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Grading Contest...
-                    </>
+                    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>Grading Contest...</span>
+                    </span>
                   ) : currentQuestionIndex >= totalQuestions - 1 ? (
-                    <>
-                      <Award className="w-4 h-4" />
-                      Submit Answer & Finish Test 🚀
-                    </>
+                    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <Award className="w-4 h-4 shrink-0" />
+                      <span>Submit Answer &amp; Finish Test</span>
+                      <span className="text-base leading-none shrink-0">🚀</span>
+                    </span>
                   ) : (
-                    <>
-                      Submit Answer & Next Question ➔
-                    </>
+                    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <span>Submit Answer &amp; Next Question</span>
+                      <span className="text-base leading-none shrink-0">➔</span>
+                    </span>
                   )}
                 </button>
               </div>
@@ -941,7 +1091,7 @@ export default function ContestPage() {
             </h3>
             <p className="text-sm text-gray-600 mb-6">
               You answered <strong className="text-black">{answeredCount}</strong> of{" "}
-              <strong className="text-black">{totalQuestions}</strong> questions. Unanswered questions will be marked as incorrect. Are you sure you want to submit now?
+              <strong className="text-black">{totalQuestions}</strong> questions. Unanswered questions will be marked as incorrect (0 pts). Are you sure you want to submit now?
             </p>
             <div className="flex gap-3 justify-center">
               <button
@@ -955,6 +1105,68 @@ export default function ContestPage() {
                 className="px-6 py-2.5 rounded-full text-xs font-bold bg-[#12BAB0] text-white hover:bg-[#0fa89f] transition-colors cursor-pointer shadow-sm"
               >
                 Submit Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Test Warning Modal */}
+      {showLeaveModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl text-center border border-amber-200 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-300 shadow-sm">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-xl font-black text-gray-900 mb-2">
+              Leave Test in Progress?
+            </h3>
+
+            <div className="bg-amber-50/90 rounded-2xl p-4 border border-amber-200 text-left mb-5 space-y-2.5">
+              <p className="text-xs sm:text-sm text-amber-900 font-bold flex items-center gap-1.5">
+                <span>⚠️</span>
+                <span>If you leave now, your quiz will be submitted immediately!</span>
+              </p>
+              <ul className="text-xs text-amber-800 space-y-1.5 list-disc list-inside">
+                <li>
+                  Your answered questions (<strong>{answeredCount}</strong> of <strong>{totalQuestions}</strong>) will be graded and awarded marks.
+                </li>
+                <li>
+                  All pending/unanswered questions (<strong>{Math.max(0, totalQuestions - answeredCount)}</strong>) will be marked as <strong>0 points</strong>.
+                </li>
+                <li>
+                  <strong>You cannot retake or re-enter this test once you leave.</strong>
+                </li>
+              </ul>
+            </div>
+
+            <p className="text-xs text-gray-500 mb-6">
+              Are you sure you want to leave and finalize your submission now?
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-full text-xs sm:text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors cursor-pointer"
+              >
+                Stay &amp; Continue Test
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLeaveAndSubmit}
+                disabled={isSubmitting}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>Submit &amp; Leave Test</>
+                )}
               </button>
             </div>
           </div>

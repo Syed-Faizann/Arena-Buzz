@@ -183,7 +183,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="space-y-6 pb-16 max-w-5xl mx-auto">
+    <div className="space-y-6 pb-16 w-full">
       {/* Toast Alert */}
       {toast && (
         <div className="fixed top-5 right-5 z-50 animate-in slide-in-from-top-3 fade-in duration-200">
