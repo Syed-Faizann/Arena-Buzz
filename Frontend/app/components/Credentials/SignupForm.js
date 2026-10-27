@@ -122,7 +122,7 @@ const SignupForm = ({ setMode }) => {
         Sign Up
       </h1>
       <p className="text-gray-500 text-xs md:text-sm mb-4">
-        Join Fantasy Buzz to participate or host exciting contests.
+        Join Arena Buzz to participate or host exciting contests.
       </p>
 
       {error && (

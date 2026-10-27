@@ -394,24 +394,44 @@ export default function SubscriptionModal({
               </div>
             </div>
 
-            {/* Proceed to Card Details Button */}
+            {/* Proceed to Payment Buttons */}
             <div className="space-y-3">
               <button
                 type="button"
-                onClick={() => setStep("card")}
-                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm tracking-wide shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                onClick={handleStripeRedirect}
+                disabled={loading}
+                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm tracking-wide shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <CreditCard className="w-4 h-4" />
-                <span>
-                  Proceed to Enter Card Details (${planPrice}/{planPeriod === "year" ? "yr" : "mo"})
-                </span>
-                <ArrowRight className="w-4 h-4" />
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Connecting to Stripe...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>
+                      Pay Securely with Stripe (${planPrice}/{planPeriod === "year" ? "yr" : "mo"})
+                    </span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep("card")}
+                disabled={loading}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-medium text-xs border border-slate-700/80 transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                <span>Test Mode: Enter Card / Sandbox Details</span>
               </button>
 
               <div className="flex items-center justify-center text-[11px] text-slate-400 px-2">
                 <span className="flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Localhost Protected Checkout with Confirmation
+                  Encrypted & Verified Stripe Payment Protection
                 </span>
               </div>
             </div>

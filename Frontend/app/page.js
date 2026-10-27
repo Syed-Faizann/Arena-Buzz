@@ -41,7 +41,7 @@ export default function Home() {
         <h1 className="tracking-wide text-4xl md:text-5xl text-white">
           Welcome to Admin Portal of
           <span className="block mt-3 font-extrabold text-4xl md:text-5xl text-white">
-            Fantazy Buzz
+            Arena Buzz
           </span>
         </h1>
         <button

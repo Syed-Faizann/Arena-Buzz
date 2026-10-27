@@ -187,7 +187,7 @@ export default function JoinOrganizationPage() {
         </p>
         <Link href="/">
           <button className="bg-gradient-to-r from-[#12BAB0] to-[#0ea89b] hover:from-[#15cfc4] hover:to-[#12bab0] text-[#010B28] px-7 py-3 rounded-full text-sm font-extrabold shadow-lg shadow-[#12BAB0]/20 transition-all cursor-pointer">
-            Return to Fantasy Buzz
+            Return to Arena Buzz
           </button>
         </Link>
       </div>
@@ -237,7 +237,7 @@ export default function JoinOrganizationPage() {
           <Link href="/">
             <div className="flex items-center gap-2 group cursor-pointer">
               <span className="text-2xl font-black text-white tracking-wider group-hover:text-gray-200 transition-colors">
-                Fantasy
+                Arena
               </span>
               <span className="text-2xl font-black text-[#12BAB0] tracking-wider group-hover:scale-105 transition-transform">
                 Buzz

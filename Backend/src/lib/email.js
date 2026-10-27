@@ -15,12 +15,12 @@ export const sendResetOtpEmail = async (toEmail, otp) => {
     });
 
     const mailOptions = {
-      from: `"Fantasy Buzz" <${emailUser}>`,
+      from: `"Arena Buzz" <${emailUser}>`,
       to: toEmail,
-      subject: "Password Reset Code - Fantasy Buzz",
+      subject: "Password Reset Code - Arena Buzz",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-          <h2 style="color: #010B28; text-align: center;">Fantasy Buzz</h2>
+          <h2 style="color: #010B28; text-align: center;">Arena Buzz</h2>
           <hr style="border: 0; border-top: 1px solid #eee;" />
           <p style="font-size: 16px; color: #333;">Hello,</p>
           <p style="font-size: 14px; color: #555;">You requested to reset your password. Use the verification code below to proceed:</p>

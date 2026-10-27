@@ -89,7 +89,7 @@ export default function SidebarHeader({ isOpen, onClose }) {
           <Link href={isSuperAdmin ? "/dashboard/admin" : "/dashboard"}>
             <div className="w-fit mt-5 flex-shrink-0">
               <h2 className="text-4xl font-extrabold text-white rotate-[-8deg] origin-left leading-none">
-                Fantasy
+                Arena
               </h2>
               <h1 className="text-5xl font-extrabold text-white rotate-[3deg] origin-left leading-none -mt-4 ml-16">
                 Buzz
@@ -98,7 +98,7 @@ export default function SidebarHeader({ isOpen, onClose }) {
                 <div className="relative w-30 h-10">
                   <Image
                     src={tech}
-                    alt="Tech Icon"
+                    alt="Arena Buzz Icon"
                     layout="fill"
                     objectFit="contain"
                   />

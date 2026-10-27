@@ -193,8 +193,8 @@ export default function AccountDropdown() {
 
   const userInitials = user
     ? `${user.firstName?.[0] || ""}${user.lastName?.[0] || ""}`.toUpperCase()
-    : "FB";
-  const fullName = user ? `${user.firstName} ${user.lastName}` : "Fantasy Buzz";
+    : "AB";
+  const fullName = user ? `${user.firstName} ${user.lastName}` : "Arena Buzz";
   const isSuperAdmin = user?.userType === "superadmin";
   const isHost = user?.userType === "host";
 
@@ -752,7 +752,7 @@ export default function AccountDropdown() {
             {/* Footer with Sign Out */}
             <div className="p-3 bg-gray-50/80 border-t border-gray-100 flex items-center justify-between">
               <span className="text-[11px] text-gray-400 font-medium pl-2">
-                Fantasy Buzz v1.0
+                Arena Buzz v1.0
               </span>
               <button
                 onClick={() => {

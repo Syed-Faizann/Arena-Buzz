@@ -69,12 +69,12 @@ export const getDashboardStats = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
-    // Calculate revenue from Payment model
+    // Calculate real revenue from Payment model (excluding simulated sandbox payments)
     let totalRevenue = 0;
     let totalPayments = 0;
     try {
       const revenueAgg = await Payment.aggregate([
-        { $match: { status: "completed" } },
+        { $match: { status: "completed", paymentMethod: { $ne: "sandbox" } } },
         { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
       ]);
       totalRevenue = revenueAgg[0]?.total || 0;
@@ -631,14 +631,14 @@ export const getAdminPayments = async (req, res) => {
       .populate("recipient", "firstName lastName email")
       .sort({ createdAt: -1 });
 
-    // Revenue metrics aggregation
+    // Revenue metrics aggregation (excluding sandbox test payments)
     const revenueAgg = await Payment.aggregate([
-      { $match: { status: "completed" } },
+      { $match: { status: "completed", paymentMethod: { $ne: "sandbox" } } },
       { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
     ]);
 
-    const monthlyCount = await Payment.countDocuments({ plan: "monthly", status: "completed" });
-    const yearlyCount = await Payment.countDocuments({ plan: "yearly", status: "completed" });
+    const monthlyCount = await Payment.countDocuments({ plan: "monthly", status: "completed", paymentMethod: { $ne: "sandbox" } });
+    const yearlyCount = await Payment.countDocuments({ plan: "yearly", status: "completed", paymentMethod: { $ne: "sandbox" } });
     const activeSubscribers = await User.countDocuments({
       "subscription.status": "active",
       "subscription.expiresAt": { $gt: new Date() },

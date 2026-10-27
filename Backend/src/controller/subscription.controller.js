@@ -100,10 +100,9 @@ export const createCheckoutSession = async (req, res) => {
       await user.save();
     }
 
-    // Create Stripe Checkout Session
+    // Create Stripe Checkout Session (payment methods automatically managed via Stripe Dashboard)
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
@@ -168,59 +167,95 @@ export const verifySession = async (req, res) => {
       return res.status(404).json({ message: "Stripe session not found" });
     }
 
-    if (session.payment_status === "paid" || session.status === "complete") {
-      const user = await User.findById(userId);
-      const plan = session.metadata?.plan || "monthly";
-      const customerId = session.customer;
-      const subscriptionId = session.subscription;
-
-      await applySubscriptionPlan(user, plan, {
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscriptionId,
-      });
-
-      // Record payment for Admin Dashboard
-      try {
-        const adminUser = await User.findOne({ userType: "superadmin" });
-        const recipientEmail = adminUser?.email || process.env.ADMIN_EMAIL || "admin@fantsy.com";
-        const amount = plan === "yearly" ? 179 : 19;
-        const planName = plan === "yearly" ? "Host Pro Annual Plan" : "Host Pro Monthly Plan";
-
-        await Payment.create({
-          transactionId: session.payment_intent || session.id || `TXN-STRIPE-${Date.now()}`,
-          host: user._id,
-          hostName: `${user.firstName} ${user.lastName}`,
-          hostEmail: user.email,
-          organizationName: user.organizationName || "",
-          recipient: adminUser?._id || null,
-          recipientEmail,
-          plan,
-          planTitle: planName,
-          amount,
-          currency: "USD",
-          status: "completed",
-          paymentMethod: "stripe",
-          stripeSessionId: session.id,
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: subscriptionId,
-          validFrom: user.subscription.startDate,
-          validUntil: user.subscription.expiresAt,
-          notes: `Stripe checkout subscription payment received by Super Admin (${recipientEmail})`,
-        });
-      } catch (payErr) {
-        console.error("Failed to record Stripe payment:", payErr);
-      }
-
-      const updatedStatus = await checkSubscriptionStatus(user);
-
-      return res.status(200).json({
-        success: true,
-        message: `Plan ${plan} successfully activated!`,
-        subscription: updatedStatus.subscription,
+    // Security Check 1: Enforce session ownership (prevent claiming someone else's paid session)
+    const sessionUserId = session.metadata?.userId || session.client_reference_id;
+    if (sessionUserId && sessionUserId.toString() !== userId.toString()) {
+      return res.status(403).json({
+        message: "Payment verification failed: This Stripe session does not belong to your account.",
       });
     }
 
-    return res.status(400).json({ message: "Payment was not completed" });
+    // Security Check 2: Verify payment status from Stripe
+    if (session.payment_status !== "paid" && session.status !== "complete") {
+      return res.status(400).json({ message: "Payment was not completed" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Security Check 3: Anti-replay protection (prevent re-crediting or duplicate claiming)
+    const txnId = session.payment_intent || session.id;
+    const existingPayment = await Payment.findOne({
+      $or: [{ stripeSessionId: session.id }, { transactionId: txnId }],
+    });
+
+    if (existingPayment) {
+      // If already claimed by this user, return current status safely
+      if (existingPayment.host?.toString() === userId.toString()) {
+        const currentStatus = await checkSubscriptionStatus(user);
+        return res.status(200).json({
+          success: true,
+          message: "Payment already verified and subscription is active.",
+          subscription: currentStatus.subscription,
+        });
+      }
+
+      // If claimed by another user, reject
+      return res.status(400).json({
+        message: "Payment verification failed: This Stripe session has already been claimed by another account.",
+      });
+    }
+
+    const plan = session.metadata?.plan || "monthly";
+    const customerId = session.customer;
+    const subscriptionId = session.subscription;
+
+    await applySubscriptionPlan(user, plan, {
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscriptionId,
+    });
+
+    // Record payment for Admin Dashboard
+    try {
+      const adminUser = await User.findOne({ userType: "superadmin" });
+      const recipientEmail = adminUser?.email || process.env.ADMIN_EMAIL || "admin@fantsy.com";
+      const amount = plan === "yearly" ? 179 : 19;
+      const planName = plan === "yearly" ? "Host Pro Annual Plan" : "Host Pro Monthly Plan";
+
+      await Payment.create({
+        transactionId: txnId,
+        host: user._id,
+        hostName: `${user.firstName} ${user.lastName}`,
+        hostEmail: user.email,
+        organizationName: user.organizationName || "",
+        recipient: adminUser?._id || null,
+        recipientEmail,
+        plan,
+        planTitle: planName,
+        amount,
+        currency: "USD",
+        status: "completed",
+        paymentMethod: "stripe",
+        stripeSessionId: session.id,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscriptionId,
+        validFrom: user.subscription.startDate,
+        validUntil: user.subscription.expiresAt,
+        notes: `Stripe checkout subscription payment received by Super Admin (${recipientEmail})`,
+      });
+    } catch (payErr) {
+      console.error("Failed to record Stripe payment:", payErr);
+    }
+
+    const updatedStatus = await checkSubscriptionStatus(user);
+
+    return res.status(200).json({
+      success: true,
+      message: `Plan ${plan} successfully activated!`,
+      subscription: updatedStatus.subscription,
+    });
   } catch (error) {
     console.error("verifySession error:", error);
     return res.status(500).json({ message: error.message || "Failed to verify session" });
@@ -242,6 +277,13 @@ export const sandboxCheckout = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    // Security Check: Block sandbox checkout in production unless performed by Super Admin
+    if (process.env.NODE_ENV === "production" && user.userType !== "superadmin") {
+      return res.status(403).json({
+        message: "Sandbox checkout is disabled in production. Please use secure Stripe Checkout.",
+      });
     }
 
     const { plan = "monthly", simulateExpired = false, durationMinutes = null, resetToFree = false } = req.body;
@@ -369,6 +411,13 @@ export const processCardPayment = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Security Check: Direct card handling is strictly disabled in production for PCI-DSS compliance
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({
+        message: "Direct credit card processing is disabled in production for PCI security. Please use secure Stripe Checkout.",
+      });
+    }
+
     const last4 = cleanNumber.slice(-4);
     const amount = plan === "yearly" ? 179 : 19;
     const planName = plan === "yearly" ? "Annual Pro (365 days)" : "Monthly Pro (30 days)";
@@ -457,7 +506,7 @@ export const processCardPayment = async (req, res) => {
         amount,
         currency: "USD",
         status: "completed",
-        paymentMethod: stripeCharge ? "stripe" : "card",
+        paymentMethod: stripeCharge ? "stripe" : "sandbox",
         stripeSessionId: stripeCharge?.id || "",
         stripeCustomerId: stripeCharge?.customer || "",
         card: {
@@ -470,7 +519,7 @@ export const processCardPayment = async (req, res) => {
         validUntil: user.subscription.expiresAt,
         notes: stripeCharge
           ? `Stripe Charge (${stripeCharge.id}) processed and credited to Super Admin (${recipientEmail})`
-          : `Host subscription payment of $${amount}.00 received and credited to Super Admin account (${recipientEmail})`,
+          : `Development testing card payment credited to Super Admin account (${recipientEmail})`,
       });
     } catch (payErr) {
       console.error("Failed to record payment in DB:", payErr);
@@ -584,6 +633,44 @@ export const stripeWebhook = async (req, res) => {
               stripeSubscriptionId: session.subscription,
             });
             console.log(`Stripe webhook: Subscription activated for user ${userId}`);
+
+            // Ensure Payment record exists so Super Admin dashboard reflects this revenue
+            try {
+              const txnId = session.payment_intent || session.id;
+              const existingPay = await Payment.findOne({
+                $or: [{ stripeSessionId: session.id }, { transactionId: txnId }],
+              });
+              if (!existingPay) {
+                const adminUser = await User.findOne({ userType: "superadmin" });
+                const recipientEmail = adminUser?.email || process.env.ADMIN_EMAIL || "admin@fantsy.com";
+                const amount = plan === "yearly" ? 179 : 19;
+                const planName = plan === "yearly" ? "Host Pro Annual Plan" : "Host Pro Monthly Plan";
+
+                await Payment.create({
+                  transactionId: txnId,
+                  host: user._id,
+                  hostName: `${user.firstName} ${user.lastName}`,
+                  hostEmail: user.email,
+                  organizationName: user.organizationName || "",
+                  recipient: adminUser?._id || null,
+                  recipientEmail,
+                  plan,
+                  planTitle: planName,
+                  amount,
+                  currency: "USD",
+                  status: "completed",
+                  paymentMethod: "stripe",
+                  stripeSessionId: session.id,
+                  stripeCustomerId: session.customer,
+                  stripeSubscriptionId: session.subscription,
+                  validFrom: user.subscription.startDate,
+                  validUntil: user.subscription.expiresAt,
+                  notes: `Stripe webhook checkout.session.completed payment credited to Super Admin (${recipientEmail})`,
+                });
+              }
+            } catch (payErr) {
+              console.error("Failed to record webhook Stripe payment:", payErr);
+            }
           }
         }
         break;
@@ -600,6 +687,41 @@ export const stripeWebhook = async (req, res) => {
             stripeSubscriptionId: invoice.subscription,
           });
           console.log(`Stripe webhook: Invoice paid and subscription renewed for user ${user._id}`);
+
+          // Record recurring renewal payment
+          try {
+            const invoiceTxnId = invoice.payment_intent || invoice.id;
+            const existingPay = await Payment.findOne({ transactionId: invoiceTxnId });
+            if (!existingPay) {
+              const adminUser = await User.findOne({ userType: "superadmin" });
+              const recipientEmail = adminUser?.email || process.env.ADMIN_EMAIL || "admin@fantsy.com";
+              const amount = invoice.amount_paid ? invoice.amount_paid / 100 : (plan === "yearly" ? 179 : 19);
+              const planName = plan === "yearly" ? "Host Pro Annual Plan (Renewal)" : "Host Pro Monthly Plan (Renewal)";
+
+              await Payment.create({
+                transactionId: invoiceTxnId,
+                host: user._id,
+                hostName: `${user.firstName} ${user.lastName}`,
+                hostEmail: user.email,
+                organizationName: user.organizationName || "",
+                recipient: adminUser?._id || null,
+                recipientEmail,
+                plan,
+                planTitle: planName,
+                amount,
+                currency: (invoice.currency || "USD").toUpperCase(),
+                status: "completed",
+                paymentMethod: "stripe",
+                stripeCustomerId: customerId,
+                stripeSubscriptionId: invoice.subscription,
+                validFrom: user.subscription.startDate,
+                validUntil: user.subscription.expiresAt,
+                notes: `Stripe recurring invoice payment credited to Super Admin (${recipientEmail})`,
+              });
+            }
+          } catch (invPayErr) {
+            console.error("Failed to record invoice renewal payment:", invPayErr);
+          }
         }
         break;
       }
