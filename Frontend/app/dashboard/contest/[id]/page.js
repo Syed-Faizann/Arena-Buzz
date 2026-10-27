@@ -20,6 +20,7 @@ import {
   Lock,
   KeyRound,
   Building2,
+  ShieldAlert,
 } from "lucide-react";
 
 const OPTION_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
@@ -195,6 +196,12 @@ export default function ContestPage() {
     ? isContestExpired(contest.activeTill) || contest.status === "archived"
     : false;
 
+  const curUserId = (user?._id || user?.id)?.toString();
+  const contestHostIdStr = (contest?.host?._id || contest?.host)?.toString();
+  const isHostCreator = Boolean(
+    curUserId && contestHostIdStr && contestHostIdStr === curUserId
+  );
+
   const questions = contest?.questions || [];
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentQuestionIndex];
@@ -323,9 +330,9 @@ export default function ContestPage() {
     await handleSubmitContest(updated);
   };
 
-  // Intercept leaving the page (beforeunload, pagehide, and browser back)
+  // Intercept leaving the page (beforeunload, pagehide, and browser back) - contestants only
   useEffect(() => {
-    const isTestActive = !submissionResults && !isExpired && contest && questions.length > 0;
+    const isTestActive = !submissionResults && !isExpired && !isHostCreator && contest && questions.length > 0;
     if (!isTestActive) return;
 
     window.history.pushState({ testActive: true }, "");
@@ -402,9 +409,9 @@ export default function ContestPage() {
     };
   }, [contest?._id, submissionResults !== null, isExpired, questions.length, user?._id]);
 
-  // Single, reliable countdown and auto-advance effect per question
+  // Single, reliable countdown and auto-advance effect per question - contestants only
   useEffect(() => {
-    if (!contest || submissionResults || isExpired) return;
+    if (!contest || submissionResults || isExpired || isHostCreator) return;
     if (questions.length === 0 || currentQuestionIndex >= questions.length) return;
 
     const duration = qDuration > 0 ? qDuration : 30;
@@ -864,9 +871,151 @@ export default function ContestPage() {
             </button>
           </Link>
         </div>
+      ) : isHostCreator ? (
+        /* ========================================================= */
+        /* CASE 3: HOST CREATOR PREVIEW MODE (PARTICIPATION BLOCKED) */
+        /* ========================================================= */
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Host Notification Banner */}
+          <div className="bg-gradient-to-r from-slate-900 via-[#0B172E] to-slate-900 text-white rounded-3xl p-6 sm:p-8 border border-slate-700/80 shadow-xl relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-bold uppercase tracking-wider mb-2">
+                    Host Creator Mode
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white">
+                    You Are The Creator Of This Quiz
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-2xl mt-1 leading-relaxed">
+                    As the contest host and author, test participation and answer submission are disabled to ensure competitive fairness. You can preview all questions and solutions below.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap sm:flex-col gap-2 shrink-0">
+                <Link href="/dashboard/host">
+                  <button className="px-4 py-2 bg-[#12BAB0] hover:bg-[#0ea89b] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer w-full">
+                    <span>Host Hub</span> &rarr;
+                  </button>
+                </Link>
+                <Link href="/dashboard">
+                  <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer w-full">
+                    <span>Back to Contests</span>
+                  </button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-slate-800 text-xs">
+              <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60">
+                <span className="text-slate-400 block mb-0.5">Total Questions</span>
+                <span className="text-lg font-black text-white">{totalQuestions}</span>
+              </div>
+              <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60">
+                <span className="text-slate-400 block mb-0.5">Contestants Enrolled</span>
+                <span className="text-lg font-black text-[#12BAB0]">
+                  {contest.submissions?.length || 0} participants
+                </span>
+              </div>
+              <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60 col-span-2 sm:col-span-1">
+                <span className="text-slate-400 block mb-0.5">Status</span>
+                <span className="text-lg font-black text-emerald-400 uppercase">
+                  {contest.status || "Ongoing"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Questions Preview Breakdown */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <span>Quiz Questions & Solution Key</span>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-50 text-[#12BAB0] border border-teal-200">
+                  {totalQuestions} Questions
+                </span>
+              </h3>
+            </div>
+
+            {questions.map((q, idx) => {
+              const expected = q.correctAnswer || (q.options && q.options[0]) || "";
+              return (
+                <div
+                  key={q._id || idx}
+                  className="bg-white rounded-2xl p-6 border border-gray-200 shadow-xs"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Question {idx + 1}
+                    </span>
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{q.timer || 30}s timer</span>
+                    </span>
+                  </div>
+
+                  <h4 className="text-lg font-bold text-gray-900 mb-4">{q.question}</h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+                    {(q.options || []).map((opt, optIdx) => {
+                      const isCorrect = opt.trim() === expected.trim();
+                      return (
+                        <div
+                          key={optIdx}
+                          className={`p-3 rounded-xl border text-sm flex items-center justify-between ${
+                            isCorrect
+                              ? "border-emerald-400 bg-emerald-50 text-emerald-950 font-bold"
+                              : "border-gray-200 bg-gray-50 text-gray-700"
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                                isCorrect
+                                  ? "bg-emerald-600 text-white"
+                                  : "border border-gray-300 text-gray-500"
+                              }`}
+                            >
+                              {OPTION_LETTERS[optIdx] || optIdx + 1}
+                            </span>
+                            <span>{opt}</span>
+                          </span>
+                          {isCorrect && (
+                            <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Correct
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {q.source && q.source.trim() && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex items-center gap-1.5">
+                      <span className="font-semibold">Source:</span>
+                      <a
+                        href={q.source.startsWith("http") ? q.source : `https://${q.source}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#12BAB0] hover:underline inline-flex items-center gap-1"
+                      >
+                        {q.source} <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ) : (
         /* ========================================================= */
-        /* CASE 3: ACTIVE CONTEST TEST VIEW: ONE QUESTION ON SCREEN  */
+        /* CASE 4: ACTIVE CONTEST TEST VIEW: ONE QUESTION ON SCREEN  */
         /* ========================================================= */
         <div className="space-y-6">
           {/* Top Progress & Live Question Countdown Bar */}

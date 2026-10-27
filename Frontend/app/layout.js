@@ -29,8 +29,9 @@ import { AuthProvider } from "./context/AuthContext";
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning={true}>
       <body
+        suppressHydrationWarning={true}
         className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} font-poppins antialiased`}
       >
         <AuthProvider>{children}</AuthProvider>

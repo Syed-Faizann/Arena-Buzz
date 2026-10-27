@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Save,
   AlertCircle,
+  Eye,
 } from "lucide-react";
 import DeadlinePicker from "../DeadlinePicker";
 import Link from "next/link";
@@ -500,10 +501,12 @@ const Ongoing = ({
                   <div className="flex items-center justify-between pt-4 gap-2 flex-wrap">
                     <p className="text-[#222222] md:text-base text-[13px]">
                       {contest.questions?.length || 0} Questions{" "}
-                      {canEditQuiz
+                      {isCreatorHost
                         ? isExpanded
                           ? "• Editing questions below"
-                          : "• Click card to edit & manage questions"
+                          : "• Host Creator Mode (Attempt Disabled)"
+                        : canEditQuiz
+                        ? "• Admin Oversight Mode"
                         : "• Click to take test"}
                     </p>
 
@@ -553,13 +556,25 @@ const Ongoing = ({
                         </>
                       )}
 
-                      <Link
-                        href={`/dashboard/contest/${contest._id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#12BAB0] hover:bg-[#0fa89f] text-white text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer flex-shrink-0"
-                      >
-                        Take Test 🚀
-                      </Link>
+                      {isCreatorHost ? (
+                        <Link
+                          href={`/dashboard/contest/${contest._id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-900 text-slate-100 text-xs font-bold transition-all shadow-xs flex-shrink-0"
+                          title="Host Creator Preview Mode - Attempt is disabled"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-[#12BAB0]" />
+                          <span>Preview Quiz 👁️</span>
+                        </Link>
+                      ) : (
+                        <Link
+                          href={`/dashboard/contest/${contest._id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#12BAB0] hover:bg-[#0fa89f] text-white text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer flex-shrink-0"
+                        >
+                          Take Test 🚀
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>

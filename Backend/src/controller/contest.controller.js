@@ -218,7 +218,12 @@ export const getContestById = async (req, res) => {
       }
     }
 
-    return res.status(200).json({ contest });
+    const contestHostIdStr = (contest.host?._id || contest.host)?.toString();
+    const isHostCreator = Boolean(
+      currentUserId && contestHostIdStr && contestHostIdStr === currentUserId.toString()
+    );
+
+    return res.status(200).json({ contest, isHostCreator });
   } catch (error) {
     console.error("getContestById error:", error);
     return res.status(500).json({ message: "Failed to fetch contest" });
@@ -432,6 +437,15 @@ export const submitQuestionAnswer = async (req, res) => {
 
     const userId = req.session?.userId || null;
 
+    // Security & Fairness Check: The host who created this quiz cannot attempt or submit answers
+    const contestHostIdStr = (contest.host?._id || contest.host)?.toString();
+    if (userId && contestHostIdStr && contestHostIdStr === userId.toString()) {
+      return res.status(403).json({
+        message: "As the host and creator of this quiz, you cannot participate in or submit answers to your own contest.",
+        isHostCreator: true,
+      });
+    }
+
     // Check if user already submitted this contest
     if (userId && contest.submissions && contest.submissions.length > 0) {
       const alreadySubmitted = contest.submissions.some(
@@ -516,6 +530,15 @@ export const submitWholeContest = async (req, res) => {
     const contest = await Contest.findById(id);
     if (!contest) {
       return res.status(404).json({ message: "Contest not found" });
+    }
+
+    // Security & Fairness Check: The host who created this quiz cannot attempt or submit answers
+    const contestHostIdStr = (contest.host?._id || contest.host)?.toString();
+    if (userId && contestHostIdStr && contestHostIdStr === userId.toString()) {
+      return res.status(403).json({
+        message: "As the host and creator of this quiz, you cannot participate in or submit your own contest.",
+        isHostCreator: true,
+      });
     }
 
     // Membership check: contestants can only attempt/submit contests from institutes they joined
